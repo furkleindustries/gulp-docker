@@ -1,3 +1,12 @@
+/* Change these to the relevant values for your project. */
+const imageName         = 'furkleindustries-homepage';
+const containerName     = 'furkleindustries-homepage';
+const primaryPort       = 3000;
+const secondaryPort     = 3001;
+const letsEncryptDomain = 'furkleindustries.com';
+/* */
+
+/* Dependencies */
 const {
   exec,
 } = require('child_process');
@@ -10,20 +19,14 @@ const {
 const {
   resolve,
 } = require('path');
-const rimraf = require('rimraf');
 const {
   promisify,
 } = require('util');
-
-/* Change these to the relevant values for your project. */
-const projectDir        = '/etc/furkleindustries-homepage/';
-const imageName         = 'furkleindustries-homepage';
-const containerName     = 'furkleindustries-homepage';
-const letsEncryptDomain = 'furkleindustries.com';
+/* */
 
 const dockerBuild = async () => {
   console.log(`Building ${imageName} image.`);
-  await promisify(exec)(`docker build -t ${imageName} ${projectDir}`);
+  await promisify(exec)(`docker build -t ${imageName} ${__dirname}`);
   console.log(`Built ${imageName} container.`);
   console.log('dockerBuild task complete.');
 };
@@ -48,18 +51,54 @@ const dockerKill = async () => {
 
 module.exports.dockerKill = dockerKill;
 
+const dockerRun = async () => {
+  console.log(`Running ${containerName} container.`);
+  if (h2) {
+    const mk = promisify(mkdir);
+    await mk(`${__dirname}secrets/`);
+    await mk(`${__dirname}secrets/ssl/`);
+
+    const cp = promisify(copyFile);
+    const sslDir = `/etc/letsencrypt/live/${letsEncryptDomain}/`;
+    await Promise.all([
+      cp(`${sslDir}privkey.pem`, `${__dirname}secrets/ssl/`),
+      cp(`${sslDir}fullchain.pem`, `${__dirname}secrets/ssl/`),
+    ]);
+  }
+
+  await promisify(exec)('docker run ' +
+                        /* Run the process on a separate thread from the shell. */
+                        '-d ' +
+                        /* Call the container ${containerName}. */
+                        `--name  ${containerName} ` +
+                        (h2 ?
+                          /* Expose port 3001 on the container as port 80 on the
+                           * host machine, */
+                          '-p 80:3001 ' +
+                          /* and port 3000 on the container as port 443 on the
+                          * host machine. */
+                          '-p 443:3000 ' :
+                          /* Or only use HTTP. */
+                          '-p 80:3000 ') +
+                        /* Run from the ${imageName} image. */
+                        imageName);
+
+  console.log(`Ran ${containerName} container.`);
+  console.log('dockerRun task complete.');
+};
+
+module.exports.dockerRun = dockerRun;
+
 const dockerUp = async () => {
   await dockerClean();
   await dockerBuild();
   await dockerRun();
   console.log('dockerUp task complete.');
-}
+};
 
 const dockerRebuild = async () => {
   await dockerKill();
-  await dockerClean();
-  await dockerBuild();
-  await dockerRun();
+  await dockerUp();
   console.log('dockerRebuild task complete.');
 };
 
@@ -70,7 +109,7 @@ const dockerStart = async () => {
   await promisify(exec)(`docker start ${containerName}`);
   console.log(`Started ${containerName} container.`);
   console.log('dockerStart task complete.');
-}
+};
 
 module.exports.dockerStart = dockerStart;
 
@@ -82,40 +121,3 @@ const dockerStop = async () => {
 };
 
 module.exports.dockerStop = dockerStop;
-
-const dockerRun = async () => {
-  console.log(`Running ${containerName} container.`);
-  if (h2) {
-    const mk = promisify(mkdir);
-    await mk(`${projectDir}secrets/`);
-    await mk(`${projectDir}secrets/ssl/`);
-
-    const cp = promisify(copyFile);
-    const sslDir = '/etc/letsencrypt/live/furkleindustries.com/';
-    await Promise.all([
-      cp(`${sslDir}privkey.pem`, `${projectDir}/secrets/ssl/`),
-      cp(`${sslDir}fullchain.pem`, `${projectDir}/secrets/ssl/`),
-    ]);
-  }
-
-  await promisify(exec)('docker run ' +
-                        /* Run the process on a separate thread from the shell. */
-                        '-d ' +
-                        /* Call the container furkleindustries-homepage. */
-                        `--name  ${containerName} ` +
-                        /* Expose port 3001 on the container as port 80 on the
-                         * host machine. */
-                        (h2 ? '-p 80:3001 ' +
-                          /* Expose port 3000 on the container as port 443 on the
-                          * host machine. */
-                          '-p 443:3000 ' :
-                          /* Or only use HTTP. */
-                          '-p 80:3000 ') +
-                        /* Run from the furkleindustries-homepage image. */
-                        imageName);
-
-  console.log(`Ran ${containerName} container.`);
-  console.log('dockerRun task complete.');
-};
-
-module.exports.dockerRun = dockerRun;
